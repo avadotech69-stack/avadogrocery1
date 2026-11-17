@@ -1,0 +1,8 @@
+{
+  "name": "Avado Grocery",
+  "description": "Fresh Bangladeshi online grocery supermarket in Uttara, Sector 11, Dhaka. Shop fruits, vegetables, fish, meat, rice, oil, dairy & daily essentials in ৳ BDT.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
