@@ -8,6 +8,7 @@ import { CartDrawer } from './CartDrawer';
 import { AccountDrawer } from './AccountDrawer';
 import { QuickViewModal } from './QuickViewModal';
 import { ToastContainer } from './ToastContainer';
+import { AIChatWidget } from './AIChatWidget';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
@@ -21,6 +22,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       <CartDrawer />
       <AccountDrawer />
       <QuickViewModal />
+      <AIChatWidget />
       <ToastContainer />
     </div>
   );

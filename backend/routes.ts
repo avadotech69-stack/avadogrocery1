@@ -11,6 +11,12 @@ import {
   pool,
   supabaseAdmin,
 } from './db';
+import {
+  extractFriendlyAiError,
+  invalidateAiCatalogCache,
+  normalizeChatHistory,
+  runStoreAiChat,
+} from './ai';
 
 const router = Router();
 const upload = multer({
@@ -672,6 +678,7 @@ router.post('/orders', optionalAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     await client.query('COMMIT');
+    invalidateAiCatalogCache();
 
     res.status(201).json({
       order: {
@@ -993,6 +1000,7 @@ router.post('/admin/products', requireAdmin, async (req, res) => {
       ]
     );
 
+    invalidateAiCatalogCache();
     const created = await fetchAllProducts();
     const product = created.find((p) => p.id === id);
     res.status(201).json({ product });
@@ -1069,6 +1077,7 @@ router.put('/admin/products/:id', requireAdmin, async (req, res) => {
       ]
     );
 
+    invalidateAiCatalogCache();
     const all = await fetchAllProducts();
     res.json({ product: all.find((p) => p.id === id) });
   } catch (err) {
@@ -1079,6 +1088,7 @@ router.put('/admin/products/:id', requireAdmin, async (req, res) => {
 router.delete('/admin/products/:id', requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
+    invalidateAiCatalogCache();
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1128,6 +1138,7 @@ router.post('/admin/categories', requireAdmin, async (req, res) => {
         nextOrder,
       ]
     );
+    invalidateAiCatalogCache();
     res.status(201).json({ category: mapCategoryRow(result.rows[0]) });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1179,6 +1190,7 @@ router.put('/admin/categories/:slug', requireAdmin, async (req, res) => {
         targetSlug,
       ]
     );
+    invalidateAiCatalogCache();
     res.json({ category: mapCategoryRow(result.rows[0]) });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1200,6 +1212,7 @@ router.delete('/admin/categories/:slug', requireAdmin, async (req, res) => {
       return;
     }
     await pool.query('DELETE FROM categories WHERE slug = $1', [slug]);
+    invalidateAiCatalogCache();
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1303,6 +1316,7 @@ router.post('/admin/coupons', requireAdmin, async (req, res) => {
       [code, description, descriptionBn, type, value, minSubtotal, maxDiscount, showInBanner]
     );
     await client.query('COMMIT');
+    invalidateAiCatalogCache();
     const c = inserted.rows[0];
     res.status(201).json({
       coupon: {
@@ -1351,6 +1365,7 @@ router.patch('/admin/coupons/:code', requireAdmin, async (req, res) => {
       res.status(404).json({ error: 'Promo code not found' });
       return;
     }
+    invalidateAiCatalogCache();
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1364,6 +1379,7 @@ router.delete('/admin/coupons/:code', requireAdmin, async (req, res) => {
   const code = String(req.params.code ?? '').trim().toUpperCase();
   try {
     await pool.query('DELETE FROM coupons WHERE code = $1', [code]);
+    invalidateAiCatalogCache();
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -1486,6 +1502,49 @@ router.patch('/admin/orders/:id/status', requireAdmin, async (req, res) => {
     res.json({ order: result.rows[0] });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.post('/chat', upload.single('image'), async (req, res) => {
+  try {
+    const rawBody = req.body ?? {};
+    const message = typeof rawBody.message === 'string' ? rawBody.message.trim() : '';
+    const lang = rawBody.lang === 'bn' ? 'bn' : 'en';
+
+    let rawHistory: unknown = rawBody.history;
+    if (typeof rawHistory === 'string') {
+      try {
+        rawHistory = JSON.parse(rawHistory);
+      } catch {
+        rawHistory = [];
+      }
+    }
+    const history = normalizeChatHistory(rawHistory);
+
+    let imagePayload: { buffer: Buffer; mimeType: string } | null = null;
+    if (req.file && req.file.buffer?.length) {
+      imagePayload = {
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype || 'image/jpeg',
+      };
+    }
+
+    if (!message && !imagePayload) {
+      res.status(400).json({ error: 'Please type a message or attach a product photo.' });
+      return;
+    }
+
+    const result = await runStoreAiChat({
+      message,
+      lang,
+      history,
+      image: imagePayload,
+    });
+
+    res.json(result);
+  } catch (err) {
+    const formatted = extractFriendlyAiError(err);
+    res.status(formatted.status).json({ error: formatted.message });
   }
 });
 
